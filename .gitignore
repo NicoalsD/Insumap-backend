@@ -9,3 +9,6 @@ __pycache__/
 htmlcov/
 *.db
 *.sqlite3
+.neon
+.claude/settings.local.json
+node_modules/
