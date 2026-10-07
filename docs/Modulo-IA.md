@@ -18,7 +18,7 @@ Ayudar al paciente a **identificar y ubicar** sus zonas de aplicación usando le
 
 ![Secuencia del asistente](images/seq-asistente.png)
 
-1. El frontend llama `POST /api/v1/asistente/mensajes` al **backend** (nunca a la IA directamente).
+1. El frontend llama `POST /api/v1/assistant/messages` al **backend** (nunca a la IA directamente).
 2. El backend valida el JWT, aplica el rate limit (20/h), guarda el mensaje y llama `POST {AI_SERVICE_URL}/chat` con:
    - `X-Service-Token`
    - un **token delegado** del paciente (JWT de 2 min con alcance `asistente:lectura`)
@@ -26,7 +26,7 @@ Ayudar al paciente a **identificar y ubicar** sus zonas de aplicación usando le
 3. `Insumap-ai` aplica el **guardrail de entrada** y llama al LLM con el system prompt y la definición de las tools.
 4. Cuando el LLM pide una tool, `Insumap-ai` ejecuta `GET` al backend con el token delegado y devuelve el resultado al LLM. Se permiten **máximo 4 rondas** de tools.
 5. Se aplica el **guardrail de salida**, que verifica que los IDs de microzona mencionados existen y que no hay contenido de dosis.
-6. Responde `{respuesta, microzonas_referidas, tokens, modelo}`. El backend lo guarda en `mensaje_asistente` y lo devuelve al frontend.
+6. Responde `{respuesta, microzonas_referidas, tokens, modelo}`. El backend lo guarda en `assistant_messages` y lo devuelve al frontend.
 
 ## 3. Proveedor LLM intercambiable
 
@@ -54,25 +54,25 @@ def chat(messages, tools):
 
 > Las URLs, nombres de modelo y precios deben **verificarse en la documentación oficial** al implementar, porque cambian con frecuencia.
 
-**Respaldo automático:** si el proveedor principal responde 5xx o hay un *timeout* de 15 s, se reintenta una vez con el secundario (`LLM_FALLBACK_*`). Si también falla, el backend responde `degradado: true` con un texto de plantilla armado a partir de `/sugerencias`. El paciente siempre recibe la sugerencia.
+**Respaldo automático:** si el proveedor principal responde 5xx o hay un *timeout* de 15 s, se reintenta una vez con el secundario (`LLM_FALLBACK_*`). Si también falla, el backend responde `degradado: true` con un texto de plantilla armado a partir de `/suggestions`. El paciente siempre recibe la sugerencia.
 
 ## 4. Tools (function calling)
 
 | Tool | Parámetros | Llama a | Devuelve |
 |---|---|---|---|
-| `get_sugerencia` | `k: int = 3` | `GET /sugerencias?k=` | Top-k con el desglose del score |
-| `get_mapa` | `macro?: ABD\|MUS\|BRA\|GLU` | `GET /mapa` (filtrado) | Colores, ratio y horas restantes |
-| `get_historial` | `dias: int = 7` | `GET /historial?desde=` | Aplicaciones recientes y conteo por macro |
-| `describir_ubicacion` | `microzona_id: str` | **local** (sin backend) | Texto anatómico determinista: macro, lado y posición relativa en la cuadrícula ("tercio superior, hacia afuera") y las referencias de seguridad (p. ej., "a 5 cm del ombligo") |
+| `get_suggestions` | `k: int = 3` | `GET /suggestions?k=` | Top-k con el desglose del score |
+| `get_map` | `macro?: ABD\|MUS\|BRA\|GLU` | `GET /map` (filtrado) | Colores, ratio y horas restantes |
+| `get_history` | `days: int = 7` | `GET /history?date_from=` | Aplicaciones recientes y conteo por macro |
+| `describe_location` | `microzona_id: str` | **local** (sin backend) | Texto anatómico determinista: macro, lado y posición relativa en la cuadrícula ("tercio superior, hacia afuera") y las referencias de seguridad (p. ej., "a 5 cm del ombligo") |
 
 ```json
 { "type": "function", "function": {
-  "name": "get_sugerencia",
+  "name": "get_suggestions",
   "description": "Obtiene las microzonas recomendadas para la próxima inyección, calculadas por el algoritmo de Insumap.",
   "parameters": { "type": "object", "properties": { "k": { "type": "integer", "minimum": 1, "maximum": 5 } } } } }
 ```
 
-`describir_ubicacion` es **código determinista**, no generado por el LLM. Así, la ubicación anatómica siempre es la misma y se puede revisar.
+`describe_location` es **código determinista**, no generado por el LLM. Así, la ubicación anatómica siempre es la misma y se puede revisar.
 
 ## 5. System prompt (versionado en `prompts/system.md`)
 
@@ -81,7 +81,7 @@ Eres el asistente de Insumap. Ayudas a pacientes con diabetes a UBICAR y ENTENDE
 las zonas de inyección sugeridas por la app. Reglas:
 1. Nunca inventes datos: usa siempre las herramientas para conocer el mapa, la
    sugerencia o el historial.
-2. Para indicar dónde inyectarse usa get_sugerencia y luego describir_ubicacion.
+2. Para indicar dónde inyectarse usa get_suggestions y luego describe_location.
 3. NO das indicaciones sobre dosis, tipo de insulina, horarios de medicación,
    glucosa, ni diagnósticos. Si te lo piden, responde que eso lo define su médico
    tratante.
@@ -104,11 +104,11 @@ las zonas de inyección sugeridas por la app. Reglas:
 
 ## 7. Costo estimado
 
-Por mensaje: unos 1 500 tokens de entrada (prompt + tools + resultados) y unos 200 de salida. Con 3 personas probando y una demo con unos 2 000 mensajes en total, el costo con DeepSeek/Qwen es **del orden de centavos de dólar**. Se controla con `tokens_entrada`/`tokens_salida` en `mensaje_asistente`.
+Por mensaje: unos 1 500 tokens de entrada (prompt + tools + resultados) y unos 200 de salida. Con 3 personas probando y una demo con unos 2 000 mensajes en total, el costo con DeepSeek/Qwen es **del orden de centavos de dólar**. Se controla con `tokens_entrada`/`tokens_salida` en `assistant_messages`.
 
 ## 8. Pruebas
 
-- **Unitarias:** cada tool con el backend *mockeado* (respx); `describir_ubicacion` con todos los IDs de un mapa 6×6.
+- **Unitarias:** cada tool con el backend *mockeado* (respx); `describe_location` con todos los IDs de un mapa 6×6.
 - **Guardrails:** 30 frases de prueba (dosis, emergencias, inyección de prompt) → respuesta esperada.
 - **Contrato:** las tools validan las respuestas contra el `openapi.json` del backend.
 - **Evaluación manual:** 20 preguntas reales con una rúbrica (correcto / usa tools / respeta las reglas), registradas en `Insumap-ai/eval/`.

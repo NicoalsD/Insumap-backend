@@ -36,7 +36,7 @@ Insumap es una **aplicación web mobile first (PWA)** con una arquitectura de **
 | `Insumap-ai` | Backend | HTTPS / JSON con el token delegado | Ejecutar tools (`get_mapa`, `get_sugerencia`, ...) |
 | `Insumap-ai` | DeepSeek / Qwen | HTTPS (API compatible con OpenAI) | Chat completions con function calling |
 | Backend | Push service | Web Push (VAPID) | Recordatorios de dosis |
-| Cron externo | Backend | HTTPS `POST /internal/recordatorios/tick` | Mantener vivo el planificador (ver [Riesgos](Riesgos.md)) |
+| Cron externo | Backend | HTTPS `POST /internal/reminders/tick` | Mantener vivo el planificador (ver [Riesgos](Riesgos.md)) |
 
 **Decisión clave:** el frontend **nunca** habla directamente con `Insumap-ai` ni con el LLM. Todo pasa por el backend, que autentica, aplica el rate limit y registra. La API key del LLM vive solo en `Insumap-ai`.
 
@@ -47,20 +47,23 @@ Insumap es una **aplicación web mobile first (PWA)** con una arquitectura de **
 ```text
 Insumap-backend/
 ├── app/
-│   ├── api/v1/            # Routers FastAPI: validan entrada (Pydantic) y delegan al servicio
-│   │   ├── auth.py  mapa.py  inyecciones.py  sugerencias.py
-│   │   ├── cronograma.py  recordatorios.py  historial.py
-│   │   ├── vinculos.py  medico.py  asistente.py  internal.py
-│   ├── services/          # Casos de uso: orquestan el dominio y los repositorios y manejan la transacción
-│   ├── domain/
-│   │   ├── structures/    # E1–E7 hechas a mano (ver Estructuras de datos)
-│   │   ├── algorithms/    # recuperacion.py, sugerencia.py, planificador.py
-│   │   └── models.py      # EstadoPaciente, Microzona, AccionRegistro (sin dependencias de BD)
-│   ├── repositories/      # Acceso a datos con SQLAlchemy
-│   ├── db/                # Modelos ORM, sesión, migraciones Alembic
-│   ├── core/              # config (pydantic-settings), seguridad (JWT, hash), errores
-│   └── main.py
-└── tests/  (structures/, algorithms/, api/)
+│   ├── api/
+│   │   ├── deps.py        # sesión de BD, usuario actual y guardas por rol / vínculo / token delegado
+│   │   ├── schemas.py     # modelos Pydantic de request/response
+│   │   └── v1/            # routers: auth, body_map, injections, history, reminders, doctor, assistant
+│   ├── services/          # casos de uso: transacción + sincronización del PatientState (state_service = caché LRU)
+│   ├── domain/            # sin FastAPI ni SQLAlchemy (mypy --strict)
+│   │   ├── structures/    # E1–E7 hechas a mano: Grid, HashTable, Stack, Heap/IndexedHeap, DoublyLinkedList, Graph, LRUCache
+│   │   ├── algorithms/    # recovery.py (5.1), suggestion.py (5.2), scheduler.py (5.4)
+│   │   ├── patient_state.py  # PatientState
+│   │   ├── models.py      # Microzone, Params, UndoAction, InjectionView, enums
+│   │   └── location.py    # describe_location (texto anatómico para el usuario)
+│   ├── repositories/      # consultas SQLAlchemy reutilizables
+│   ├── db/                # Base, tipos UTCDateTime/JSONB, modelos ORM, sesión, seed
+│   ├── core/              # config, clock, errors, security (Argon2 + JWT), rate_limit
+│   └── main.py            # app FastAPI, CORS, manejadores de error, lifespan (seed + min-heap + APScheduler)
+├── alembic/               # migraciones
+└── tests/  (domain/, api/)
 ```
 
 **Regla de dependencias:** `api → services → domain ← repositories`. El paquete `domain` **no importa** FastAPI ni SQLAlchemy, así que las estructuras y algoritmos se prueban de forma aislada y rápida.
@@ -83,7 +86,7 @@ src/
 app/
 ├── main.py            # FastAPI: POST /chat
 ├── llm/client.py      # SDK openai con base_url/model desde env (DeepSeek | Qwen)
-├── tools/             # get_mapa, get_sugerencia, get_historial, describir_ubicacion
+├── tools/             # get_map, get_suggestions, get_history, describe_location
 ├── prompts/system.md  # system prompt versionado
 └── guardrails.py      # filtros de entrada y salida (no dosis, no diagnóstico)
 ```
@@ -110,11 +113,11 @@ app/
 
 Resumen del flujo **registrar inyección**:
 1. El paciente toca la microzona en el SVG y el frontend lee su color en el mapa cacheado (TanStack Query).
-2. Si no está en VERDE, el frontend muestra el diálogo de advertencia (R04). El paciente confirma.
-3. `POST /api/v1/inyecciones {microzona_id, aplicada_en, confirmar_no_recuperada: true}`.
-4. `InyeccionService` obtiene el `EstadoPaciente` de la caché LRU, ubica la microzona en la tabla hash y valida el color. Si no está en VERDE y no viene la confirmación, responde 409 `ZONA_NO_RECUPERADA`.
-5. En una sola transacción inserta en `inyeccion`, apila la `AccionRegistro`, inserta en la lista del historial y recalcula la microzona (pasa a ROJO).
-6. Responde `201` con la microzona actualizada. El frontend invalida las consultas `mapa` y `sugerencias`.
+2. Si no está en `GREEN`, el frontend muestra el diálogo de advertencia (R04). El paciente confirma.
+3. `POST /api/v1/injections {microzone_id, applied_at, confirm_not_recovered: true}`.
+4. `injection_service.register` toma el lock, obtiene el `PatientState` de la caché LRU, ubica la microzona en la tabla hash y valida el color. Si no está en VERDE y no viene la confirmación, responde 409 `MICROZONE_NOT_RECOVERED`.
+5. Inserta en `injections` y hace commit; después aplica el registro en memoria (`PatientState.register`): apila el `UndoAction`, inserta al inicio del historial y la microzona pasa a `RED`. Si algo falla, invalida la caché.
+6. Responde `201` con la microzona actualizada. El frontend invalida las consultas `map` y `suggestions`.
 
 ## 5. Ambientes y variables de entorno
 
@@ -132,7 +135,7 @@ Resumen del flujo **registrar inyección**:
 | `JWT_SECRET`, `JWT_ACCESS_MIN=15`, `JWT_REFRESH_DIAS=7` | backend | Firma y vigencia de los tokens |
 | `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | backend | Envío de Web Push |
 | `AI_SERVICE_URL`, `AI_SERVICE_TOKEN` | backend | Llamar a `Insumap-ai` |
-| `CRON_TOKEN` | backend | Proteger `/internal/recordatorios/tick` |
+| `CRON_TOKEN` | backend | Proteger `/internal/reminders/tick` |
 | `SMTP_*` o `RESEND_API_KEY` | backend | Email de recuperación de contraseña |
 | `CORS_ORIGINS` | backend | Dominio de Vercel |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | ia | Proveedor intercambiable (ver [Módulo IA](Modulo-IA.md)) |

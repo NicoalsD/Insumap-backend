@@ -1,25 +1,35 @@
 # API REST (`Insumap-backend`)
 
 - **Base:** `https://<backend>/api/v1`
-- **Formato:** JSON, fechas en ISO-8601 con zona horaria.
-- **Documentación viva:** Swagger UI en `/docs` y contrato en `/openapi.json`. El frontend genera sus tipos desde ese contrato.
-- **Autenticación:** `Authorization: Bearer <access_token>` (JWT, 15 min). El *refresh token* viaja en la cookie `insumap_rt` (`HttpOnly; Secure; SameSite=None; Path=/api/v1/auth`).
-- **Roles:** `P` = PACIENTE, `M` = MEDICO, `S` = servicio interno (`X-Service-Token`), `—` = público.
+- **Formato:** JSON, fechas en ISO-8601 con zona horaria (UTC).
+- **Documentación viva:** Swagger UI en `/docs`, ReDoc en `/redoc` y contrato en `/openapi.json`. El frontend genera sus tipos desde ese contrato.
+- **Autenticación:** `Authorization: Bearer <access_token>` (JWT, 15 min). El *refresh token* viaja en la cookie `insumap_rt` (`HttpOnly`, `Path=/api/v1/auth`; `Secure` y `SameSite=None` en producción).
+- **Roles:** `P` = `PATIENT`, `M` = `DOCTOR`, `S` = servicio interno, `—` = público. `P*` = además acepta el **token delegado** del asistente (solo lectura).
+- **Idioma:** rutas, campos, enums y códigos de error en inglés; `message` (lo que ve el usuario) en español. Ver [AGENTS.md](../AGENTS.md).
+
+## Probar con Swagger
+
+1. Levanta la API (`uv run uvicorn app.main:app --reload`) y abre `http://localhost:8000/docs`.
+2. Pulsa **Authorize** e ingresa `paciente@demo.insumap` / `Insumap123`. El botón usa `POST /auth/token` (formulario OAuth2).
+3. Prueba `GET /map`, `GET /suggestions`, `POST /injections` y `POST /injections/undo`.
 
 ## Formato de error (todas las rutas)
 
 ```json
-{ "error": { "codigo": "ZONA_NO_RECUPERADA", "mensaje": "La microzona ABD-I-1-1 está en ROJO.", "detalle": { "color": "ROJO", "horas_restantes": 96.0 } } }
+{ "error": { "code": "MICROZONE_NOT_RECOVERED",
+             "message": "La microzona ABD-I-1-1 aún no se ha recuperado. Confirma si deseas registrarla de todas formas.",
+             "detail": { "color": "RED", "hours_remaining": 96.0, "suggested_microzone_id": "GLU-D-1-1" } } }
 ```
 
-| HTTP | `codigo` | Cuándo |
+| HTTP | `code` | Cuándo |
 |---|---|---|
-| 400 | `VALIDACION` | Cuerpo inválido (Pydantic) |
-| 401 | `NO_AUTENTICADO` / `TOKEN_EXPIRADO` | Falta el token o está vencido; el frontend intenta `/auth/refresh` |
-| 403 | `SIN_PERMISO` | El rol no corresponde o el médico no está vinculado al paciente |
-| 404 | `NO_ENCONTRADO` | Recurso inexistente |
-| 409 | `ZONA_NO_RECUPERADA`, `EMAIL_EN_USO`, `NADA_QUE_DESHACER` | Conflictos de negocio |
-| 429 | `LIMITE_EXCEDIDO` | Rate limit (login, asistente) |
+| 400 | `VALIDATION_ERROR` | Cuerpo o parámetros inválidos (`detail.errors` lista los campos) |
+| 400 | `INVALID_MICROZONE`, `TERMS_NOT_ACCEPTED`, `INVALID_RESET_TOKEN`, `INVALID_LINK_CODE`, `DUPLICATED_DOSE_TIME`, `APPLIED_IN_FUTURE`, `INVALID_CURSOR` | Reglas de negocio |
+| 401 | `NOT_AUTHENTICATED`, `TOKEN_EXPIRED`, `INVALID_TOKEN`, `INVALID_CREDENTIALS`, `INVALID_REFRESH`, `INVALID_CRON_TOKEN` | Sin token, token vencido o inválido; el frontend intenta `/auth/refresh` ante `TOKEN_EXPIRED` |
+| 403 | `FORBIDDEN` | Rol incorrecto, médico no vinculado o token delegado en una escritura |
+| 404 | `NOT_FOUND` | Recurso inexistente |
+| 409 | `MICROZONE_NOT_RECOVERED`, `EMAIL_IN_USE`, `NOTHING_TO_UNDO`, `EMPTY_HISTORY`, `ALREADY_LINKED`, `REMINDER_CLOSED` | Conflictos de negocio |
+| 429 | `RATE_LIMITED` | Límite de intentos de login (5 cada 15 min) o de mensajes al asistente (20/h) |
 
 ---
 
@@ -27,118 +37,135 @@
 
 | Método | Ruta | Rol | Descripción | Req. |
 |---|---|---|---|---|
-| POST | `/auth/registro` | — | Crea un usuario PACIENTE o MEDICO con aceptación de términos y tratamiento de datos | R20 |
-| POST | `/auth/login` | — | Devuelve `access_token` y fija la cookie de refresh. Máximo 5 intentos cada 15 min por IP y email | R21 |
+| POST | `/auth/register` | — | Crea un usuario `PATIENT` o `DOCTOR` (requiere `accept_terms: true`) e inicia sesión | R20 |
+| POST | `/auth/login` | — | JSON `{email, password}` → `access_token` + cookie de refresh | R21 |
+| POST | `/auth/token` | — | Igual que `login`, en formato formulario OAuth2 (`username` = email). Lo usa Swagger | R21 |
 | POST | `/auth/refresh` | cookie | Rota el refresh token y emite un nuevo access token | R22 |
-| POST | `/auth/logout` | P/M | Revoca el refresh token y borra la cookie | R22 |
-| POST | `/auth/olvide-contrasena` | — | Envía un email con un enlace (responde 202 aunque el email no exista) | R23 |
-| POST | `/auth/restablecer-contrasena` | — | `{token, nueva_contrasena}`; revoca todas las sesiones | R23 |
-| GET | `/auth/me` | P/M | Perfil del usuario actual y su rol | R21 |
+| POST | `/auth/logout` | cookie | Revoca el refresh token y borra la cookie (204) | R22 |
+| POST | `/auth/forgot-password` | — | Envía un enlace válido 30 min (responde 202 aunque el email no exista) | R23 |
+| POST | `/auth/reset-password` | — | `{token, new_password}`; revoca todas las sesiones | R23 |
+| GET | `/auth/me` | P/M | Usuario actual | R21 |
 
 ```http
 POST /api/v1/auth/login
-{ "email": "ana@correo.com", "contrasena": "********" }
+{ "email": "ana@correo.com", "password": "********" }
 
-200 OK   Set-Cookie: insumap_rt=...; HttpOnly; Secure
-{ "access_token": "eyJ...", "token_type": "bearer", "expira_en": 900,
-  "usuario": { "id": "…", "nombre": "Ana", "rol": "PACIENTE" } }
+200 OK   Set-Cookie: insumap_rt=...; HttpOnly; Path=/api/v1/auth
+{ "access_token": "eyJ...", "token_type": "bearer", "expires_in": 900,
+  "user": { "id": "…", "name": "Ana", "email": "ana@correo.com", "role": "PATIENT" } }
 ```
 
-## 2. Mapa y configuración: R01, R02, R07, R10
+## 2. Mapa, microzonas y sugerencias: R01, R02, R07, R10–R13
 
 | Método | Ruta | Rol | Descripción | Req. |
 |---|---|---|---|---|
-| GET | `/mapa` | P | Estado completo: zonas macro, cuadrícula y, por microzona, `color`, `ratio`, `horas_restantes`, `ultimo_uso` | R01, R02, R07, R10 |
-| GET | `/microzonas/{microzona_id}` | P | Detalle de una microzona y sus últimas 5 aplicaciones | R07, R10 |
-| PUT | `/configuracion/cuadricula` | P | `{ "tam": 2 \| 4 \| 6 }`; reproyecta el estado (E1) | R02 |
+| GET | `/map?macro=` | P* | Por cada microzona: `color`, `ratio`, `hours_remaining`, `last_used`, `uses_30d` | R01, R02, R07, R10 |
+| GET | `/microzones/{microzone_id}` | P* | Estado de la microzona y sus últimas 5 aplicaciones | R07, R10 |
+| PUT | `/settings/grid` | P | `{ "grid_size": 2 \| 4 \| 6 }`; reproyecta el historial (E1) y devuelve el mapa | R02 |
+| GET | `/suggestions?k=3` | P* | Top-k del max-heap con el desglose del score | R11, R12, R13 |
 
 ```json
-GET /api/v1/mapa  →  200
-{ "tam_cuadricula": 4, "generado_en": "2026-10-20T08:00:00-05:00",
-  "zonas": [ { "macro": "ABD", "nombre": "Abdomen", "lados": [ { "lado": "I",
-      "celdas": [ { "id": "ABD-I-1-1", "fila": 1, "columna": 1, "color": "ROJO",
-                    "ratio": 0.11, "horas_restantes": 96.0, "ultimo_uso": "2026-10-19T20:00:00-05:00" } ] } ] } ] }
+GET /api/v1/map  →  200
+{ "grid_size": 4, "generated_at": "2026-10-20T13:00:00Z",
+  "zones": [ { "macro": "ABD", "label": "Abdomen", "sides": [ { "side": "I",
+      "cells": [ { "id": "ABD-I-1-1", "row": 1, "col": 1, "color": "RED", "ratio": 0.1111,
+                   "hours_remaining": 96.0, "last_used": "2026-10-20T01:00:00Z", "uses_30d": 5 } ] } ] } ] }
+
+GET /api/v1/suggestions?k=1  →  200
+{ "suggestions": [ { "microzone_id": "GLU-D-1-1", "score": 2.5, "color": "GREEN",
+    "breakdown": { "ratio": 2.0, "forgotten_bonus": 0.5, "overuse_penalty": 0.0, "neighbor_penalty": 0.0 } } ] }
 ```
 
 ## 3. Inyecciones: R03–R06, R08, R09
 
 | Método | Ruta | Rol | Descripción | Req. |
 |---|---|---|---|---|
-| POST | `/inyecciones` | P | Registra la inyección. Devuelve 409 `ZONA_NO_RECUPERADA` si la zona no está en VERDE y `confirmar_no_recuperada` es `false` | R03, R04, R08, R09 |
-| POST | `/inyecciones/deshacer` | P | Desapila el último registro (E3) y restaura el estado previo; 409 `NADA_QUE_DESHACER` si la pila está vacía | R05, R06 |
+| POST | `/injections` | P | Registra la inyección. Responde **409 `MICROZONE_NOT_RECOVERED`** si la microzona no está en `GREEN` y `confirm_not_recovered` es `false` | R03, R04, R08, R09 |
+| POST | `/injections/undo` | P | Desapila el último registro (E3) y restaura el estado previo; 409 `NOTHING_TO_UNDO` si la pila está vacía o pasaron más de 24 h | R05, R06 |
 
 ```json
-POST /api/v1/inyecciones
-{ "microzona_id": "MUS-I-1-2", "aplicada_en": "2026-10-20T08:05:00-05:00",
-  "confirmar_no_recuperada": false, "origen": "SUGERENCIA", "recordatorio_id": null }
+POST /api/v1/injections
+{ "microzone_id": "MUS-I-1-2", "applied_at": null, "confirm_not_recovered": false,
+  "origin": "SUGGESTION", "reminder_id": null }
 
 201 Created
-{ "inyeccion": { "id": "…", "microzona_id": "MUS-I-1-2", "estado": "REGISTRADA" },
-  "microzona": { "id": "MUS-I-1-2", "color": "ROJO", "ratio": 0.0, "horas_restantes": 124.8 },
-  "puede_deshacer": true }
+{ "injection": { "id": "…", "microzone_id": "MUS-I-1-2", "macro": "MUS", "side": "I",
+                 "applied_at": "…", "registered_at": "…", "status": "REGISTERED", "undone_at": null },
+  "microzone": { "id": "MUS-I-1-2", "color": "RED", "ratio": 0.0, "hours_remaining": 124.8, "…": "…" },
+  "can_undo": true }
 ```
 
-## 4. Sugerencias: R10–R13
+`origin` ∈ `MAP` · `SUGGESTION` · `REMINDER` · `ASSISTANT`. Si viene `reminder_id`, el recordatorio queda `CONFIRMED` y enlazado a la inyección.
+
+## 4. Historial y exportes: R17–R19
 
 | Método | Ruta | Rol | Descripción | Req. |
 |---|---|---|---|---|
-| GET | `/sugerencias?k=3` | P | Top-k del max-heap con el desglose del score (para que el asistente pueda explicarlo) | R11, R12, R13 |
+| GET | `/history?cursor=&limit=20&order=desc&macro=&date_from=&date_to=` | P | Paginación por cursor sobre la lista doble (E5). `next_cursor` es `null` en la última página | R17, R18 |
+| GET | `/history/export?format=pdf\|xlsx\|csv&date_from=&date_to=` | P | Archivo con Fecha, Hora, Microzona, Zona macro, Lado y Estado (en la zona horaria del paciente); 409 `EMPTY_HISTORY` si no hay datos | R19 |
 
-```json
-{ "sugerencias": [
-  { "microzona_id": "GLU-D-1-1", "score": 2.5, "color": "VERDE",
-    "desglose": { "ratio": 2.0, "bono_olvidada": 0.5, "penalizacion_macro": 0.0, "penalizacion_vecindad": 0.0 } } ] }
-```
-
-## 5. Cronograma y recordatorios: R14–R16
+## 5. Cronograma, recordatorios y Web Push: R14–R16
 
 | Método | Ruta | Rol | Descripción | Req. |
 |---|---|---|---|---|
-| GET | `/cronograma` | P | Horas configuradas | R14 |
-| PUT | `/cronograma` | P | `{ "dosis": [{ "hora": "07:00", "etiqueta": "Desayuno" }, …] }`, de 1 a 6 elementos; reprograma el min-heap | R14 |
-| POST | `/push/suscripciones` | P/M | Guarda la `PushSubscription` del navegador | R15 |
-| DELETE | `/push/suscripciones/{id}` | P/M | Elimina la suscripción del dispositivo | R15 |
-| GET | `/recordatorios/proximos` | P | Próximos recordatorios (respaldo dentro de la app si no hay push) | R15 |
-| POST | `/recordatorios/{id}/posponer` | P | `{ "minutos": 5..120 }`, actualiza la prioridad en el heap | R16 |
-| POST | `/recordatorios/{id}/confirmar` | P | `{ "registrar": true }` → el frontend abre el mapa con la sugerencia preseleccionada | R16 |
-| POST | `/internal/recordatorios/tick` | S (`CRON_TOKEN`) | Procesa el tope del min-heap y envía los push pendientes | R15 |
+| GET | `/schedule` | P | Horas configuradas y zona horaria del paciente | R14 |
+| PUT | `/schedule` | P | `{ "doses": [{ "time": "07:00", "label": "Desayuno" }, …] }` (1 a 6, sin repetir); genera los recordatorios de las próximas 24 h en el min-heap | R14 |
+| GET | `/reminders/upcoming` | P | Próximos recordatorios (respaldo dentro de la app si no hay push) | R15 |
+| POST | `/reminders/{reminder_id}/snooze` | P | `{ "minutes": 5..120 }` → actualiza la prioridad en el min-heap (`update_priority`), estado `SNOOZED` | R16 |
+| POST | `/reminders/{reminder_id}/confirm` | P | Estado `CONFIRMED`; devuelve `suggested_microzone_id` para abrir el registro | R16 |
+| GET | `/push/vapid-public-key` | — | Llave pública VAPID para `pushManager.subscribe` | R15 |
+| POST | `/push/subscriptions` | P/M | Guarda la `PushSubscription` del navegador (`endpoint`, `p256dh`, `auth`) | R15 |
+| DELETE | `/push/subscriptions/{subscription_id}` | P/M | Elimina la suscripción | R15 |
+| POST | `/internal/reminders/tick` | S (`X-Cron-Token`) | Crea los recordatorios de las próximas 24 h y envía los vencidos del min-heap | R15 |
 
-## 6. Historial y exportes: R17–R19
+Estados de recordatorio: `PENDING` → `SENT` → (`SNOOZED` → `SENT`)* → `CONFIRMED` (o `SKIPPED`).
 
-| Método | Ruta | Rol | Descripción | Req. |
-|---|---|---|---|---|
-| GET | `/historial?cursor=&limit=20&orden=desc&desde=&hasta=&macro=` | P | Paginación por cursor sobre la lista doble (E5) | R17, R18 |
-| GET | `/historial/exportar?formato=pdf\|xlsx\|csv&desde=&hasta=` | P | Archivo con fecha, hora, microzona, macro y estado; 409 si está vacío | R19 |
-
-## 7. Vínculo con el médico: R24–R27
+## 6. Vínculo con el médico: R24–R27
 
 | Método | Ruta | Rol | Descripción | Req. |
 |---|---|---|---|---|
-| POST | `/vinculos/codigos` | P | Genera un código de 8 caracteres válido por 48 h | R24 |
-| POST | `/vinculos` | M | `{ "codigo": "K7QX2M9A" }` crea el vínculo | R24 |
-| GET | `/vinculos` | P/M | Paciente: sus médicos. Médico: sus pacientes | R24, R25 |
-| DELETE | `/vinculos/{id}` | P | El paciente revoca el acceso | R27 |
-| GET | `/medico/pacientes/{paciente_id}/mapa` | M (vinculado) | Mismo formato que `/mapa`, solo lectura | R25 |
-| GET | `/medico/pacientes/{paciente_id}/historial` | M (vinculado) | Mismo formato que `/historial` | R26 |
-| GET | `/medico/pacientes/{paciente_id}/historial/exportar` | M (vinculado) | Igual que el export del paciente | R26 |
+| POST | `/links/codes` | P | Genera un código de 8 caracteres (sin 0/O/1/I), de un solo uso, válido 48 h | R24 |
+| POST | `/links` | M | `{ "code": "K7QX2M9A" }` crea el vínculo (no distingue mayúsculas ni guiones) | R24 |
+| GET | `/links` | P/M | Paciente: sus médicos. Médico: sus pacientes | R24, R25 |
+| DELETE | `/links/{link_id}` | P | El paciente revoca el acceso (204) | R27 |
+| GET | `/doctor/patients/{patient_id}/map` | M (vinculado) | Mismo formato que `/map`, solo lectura | R25 |
+| GET | `/doctor/patients/{patient_id}/history` | M (vinculado) | Mismo formato que `/history` | R26 |
+| GET | `/doctor/patients/{patient_id}/history/export` | M (vinculado) | Igual que el export del paciente | R26 |
 
-## 8. Asistente IA: R28–R30
+## 7. Asistente IA: R28–R30
 
 | Método | Ruta | Rol | Descripción | Req. |
 |---|---|---|---|---|
-| POST | `/asistente/mensajes` | P | `{ "mensaje": "¿Dónde me inyecto ahora?" }` → el backend reenvía a `Insumap-ai` con un token delegado de 2 min. Límite: 20 mensajes/hora | R28, R29, R30 |
-| GET | `/asistente/mensajes?limit=30` | P | Conversación reciente | R28 |
+| POST | `/assistant/messages` | P | `{ "message": "¿Dónde me inyecto ahora?" }`. El backend reenvía a `Insumap-ai` (`POST {AI_SERVICE_URL}/chat`) con un token delegado de 2 min. Límite: 20 mensajes/hora | R28, R29, R30 |
+| GET | `/assistant/messages?limit=30` | P | Conversación reciente (`USER` / `ASSISTANT`) | R28 |
 
 ```json
 200 OK
-{ "respuesta": "Te sugiero el glúteo derecho, cuadrante superior externo (GLU-D-1-1)…",
-  "microzonas_referidas": ["GLU-D-1-1"], "fuente": "deepseek-chat", "degradado": false }
+{ "reply": "Te sugerimos aplicar la próxima dosis en Glúteo derecho, parte superior y hacia adentro (…) (GLU-D-1-1).",
+  "referenced_microzones": ["GLU-D-1-1"], "source": "template", "degraded": true }
 ```
 
-Si el LLM falla, se responde `degradado: true` con la sugerencia del algoritmo en texto plantilla (ver [Módulo IA](Modulo-IA.md)).
+- **Modo degradado:** si `AI_SERVICE_URL` está vacío o el servicio falla, `degraded: true` y el texto se arma con el algoritmo de sugerencia y `describe_location` (ver [Módulo IA](Modulo-IA.md)).
+- **Guardrail:** las preguntas de dosis reciben una respuesta fija (`source: "guardrail"`) sin llamar al LLM.
 
-### Endpoints que usan las tools de `Insumap-ai`
+### Contrato con `Insumap-ai`
 
-El servicio IA llama **los mismos endpoints públicos** (`/mapa`, `/sugerencias`, `/historial`, `/microzonas/{id}`) con el **token delegado** del paciente. No existen rutas especiales con más privilegios.
+```json
+POST {AI_SERVICE_URL}/chat        Header: X-Service-Token: <AI_SERVICE_TOKEN>
+{ "patient_first_name": "Ana", "message": "¿Dónde me toca?",
+  "history": [{ "role": "USER", "content": "…" }, { "role": "ASSISTANT", "content": "…" }],
+  "delegated_token": "eyJ…" }
+
+200 { "reply": "…", "referenced_microzones": ["GLU-D-1-1"], "provider": "deepseek", "model": "deepseek-chat",
+      "input_tokens": 1500, "output_tokens": 180, "blocked_by_guardrail": false }
+```
+
+Las tools del servicio IA llaman a `GET /map`, `GET /suggestions`, `GET /history` y `GET /microzones/{id}` con `Authorization: Bearer <delegated_token>`. Ese token **no** sirve para escrituras (403).
+
+## 8. Interno
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/health` | `{"status": "ok"}` (sin prefijo `/api/v1`) |
 
 Relacionadas: [Modelo de datos](Modelo-de-datos.md) · [Pantallas](Pantallas-mobile-first.md) · [Trazabilidad](Trazabilidad.md)

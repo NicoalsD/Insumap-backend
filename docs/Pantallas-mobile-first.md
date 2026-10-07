@@ -22,7 +22,7 @@ Insumap se diseña **primero para un celular de 360 × 800 px**, que es el conte
 ---
 
 ## P01. Login · P02. Registro · P03. Recuperar contraseña
-**HU:** HU-20, HU-21, HU-22, HU-23 · **Endpoints:** `/auth/login`, `/auth/registro`, `/auth/olvide-contrasena`, `/auth/restablecer-contrasena`, `/auth/me`
+**HU:** HU-20, HU-21, HU-22, HU-23 · **Endpoints:** `/auth/login`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/me`
 
 ```text
 ┌──────────────────────────┐   ┌──────────────────────────┐
@@ -44,7 +44,7 @@ Insumap se diseña **primero para un celular de 360 × 800 px**, que es el conte
 - Los errores se muestran en línea bajo cada campo. Tras 5 intentos fallidos aparece "Intenta en 15 min" (429).
 
 ## P04. Mapa corporal (pantalla principal del paciente)
-**HU:** HU-01, HU-02, HU-03, HU-04, HU-05, HU-07, HU-08, HU-11 · **Endpoints:** `GET /mapa`, `GET /sugerencias`, `POST /inyecciones`, `POST /inyecciones/deshacer`
+**HU:** HU-01, HU-02, HU-03, HU-04, HU-05, HU-07, HU-08, HU-11 · **Endpoints:** `GET /map`, `GET /suggestions`, `POST /injections`, `POST /injections/undo`
 
 ```text
 ┌──────────────────────────┐
@@ -97,7 +97,7 @@ Insumap se diseña **primero para un celular de 360 × 800 px**, que es el conte
 ```
 
 ## P06. Historial
-**HU:** HU-17, HU-18, HU-19, HU-05 · **Endpoints:** `GET /historial`, `GET /historial/exportar`, `POST /inyecciones/deshacer`
+**HU:** HU-17, HU-18, HU-19, HU-05 · **Endpoints:** `GET /history`, `GET /history/export`, `POST /injections/undo`
 
 ```text
 ┌──────────────────────────┐
@@ -115,7 +115,7 @@ Insumap se diseña **primero para un celular de 360 × 800 px**, que es el conte
 - **Exportar** abre una hoja con "PDF / Excel / CSV" y un rango de fechas.
 
 ## P07. Recordatorios y cronograma
-**HU:** HU-14, HU-15, HU-16 · **Endpoints:** `GET/PUT /cronograma`, `POST /push/suscripciones`, `GET /recordatorios/proximos`, `POST /recordatorios/{id}/posponer|confirmar`
+**HU:** HU-14, HU-15, HU-16 · **Endpoints:** `GET/PUT /schedule`, `POST /push/subscriptions`, `GET /reminders/upcoming`, `POST /reminders/{reminder_id}/snooze|confirm`
 
 ```text
 ┌──────────────────────────┐   Notificación push:
@@ -133,7 +133,7 @@ Insumap se diseña **primero para un celular de 360 × 800 px**, que es el conte
 - **Posponer** permite elegir 5, 15, 30 o 60 min.
 
 ## P08. Asistente IA
-**HU:** HU-28, HU-29, HU-30 · **Endpoints:** `POST/GET /asistente/mensajes`
+**HU:** HU-28, HU-29, HU-30 · **Endpoints:** `POST/GET /assistant/messages`
 
 ```text
 ┌──────────────────────────┐
@@ -158,7 +158,7 @@ Insumap se diseña **primero para un celular de 360 × 800 px**, que es el conte
 ```
 
 ## P09. Perfil y vínculos
-**HU:** HU-02, HU-24, HU-27, HU-22 · **Endpoints:** `PUT /configuracion/cuadricula`, `POST /vinculos/codigos`, `GET/DELETE /vinculos`, `POST /auth/logout`
+**HU:** HU-02, HU-24, HU-27, HU-22 · **Endpoints:** `PUT /settings/grid`, `POST /links/codes`, `GET/DELETE /links`, `POST /auth/logout`
 
 Contiene:
 - Tamaño de cuadrícula (2×2 / 4×4 / 6×6).
@@ -167,7 +167,7 @@ Contiene:
 - Cerrar sesión.
 
 ## P10. Médico: lista de pacientes · P11. Detalle del paciente
-**HU:** HU-24, HU-25, HU-26 · **Endpoints:** `POST /vinculos`, `GET /vinculos`, `GET /medico/pacientes/{id}/mapa|historial|historial/exportar`
+**HU:** HU-24, HU-25, HU-26 · **Endpoints:** `POST /links`, `GET /links`, `GET /doctor/patients/{patient_id}/map|history|history/export`
 
 ```text
 ┌──────────────────────────┐   (≥ lg: dos columnas)

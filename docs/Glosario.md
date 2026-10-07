@@ -9,7 +9,7 @@
 | **Zona olvidada** | Microzona sin uso durante 15 días o más (configurable). |
 | **Sobreuso** | Zona macro cuyo uso en 30 días supera el promedio de las demás. |
 | **Sugerencia / punto óptimo** | Microzona con mayor *score*, extraída del max-heap. |
-| **`EstadoPaciente`** | Objeto en memoria que agrupa las estructuras de datos de un paciente. |
+| **`PatientState`** | Objeto en memoria que agrupa las estructuras de datos de un paciente. |
 | **Token delegado** | JWT de corta duración que permite al servicio IA leer datos del paciente en su nombre. |
 | **Lipodistrofia / lipohipertrofia** | Alteración del tejido graso por inyecciones repetidas en el mismo sitio; es la complicación que la rotación busca evitar. |
 | **PWA** | *Progressive Web App*: web instalable, con service worker, uso offline y notificaciones push. |

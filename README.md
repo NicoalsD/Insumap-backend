@@ -13,10 +13,17 @@ Requisitos: [uv](https://docs.astral.sh/uv/) y Docker o Podman.
 
 ```bash
 uv sync
-docker compose up -d db          # o: podman compose up -d db
+docker compose up -d db          # PostgreSQL local (o el comando podman de abajo)
 cp .env.example .env
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
+```
+
+Sin Docker Compose (por ejemplo, Podman):
+
+```bash
+podman run -d --name insumap-db -e POSTGRES_USER=insumap -e POSTGRES_PASSWORD=insumap \
+  -e POSTGRES_DB=insumap -p 5432:5432 docker.io/library/postgres:16-alpine
 ```
 
 Abre **http://localhost:8000/docs** (Swagger), pulsa **Authorize** e ingresa:

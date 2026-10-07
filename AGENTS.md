@@ -127,7 +127,7 @@ La BD es siempre la fuente de verdad. La caché expira por TTL (`STATE_CACHE_TTL
 
 ```bash
 uv sync                                   # instalar dependencias (Python 3.12)
-podman compose up -d db                   # o: docker compose up -d db  (PostgreSQL local)
+docker compose up -d db                   # PostgreSQL local (o el comando podman de abajo)
 cp .env.example .env
 uv run alembic upgrade head               # aplicar migraciones
 uv run uvicorn app.main:app --reload      # API en http://localhost:8000  → Swagger en /docs
@@ -138,6 +138,13 @@ uv run ruff check app tests alembic && uv run ruff format app tests alembic
 uv run mypy                               # tipos estrictos en app/domain
 
 uv run alembic revision --autogenerate -m "describe change"   # nueva migración (requiere BD local)
+```
+
+Sin Docker Compose (por ejemplo, Podman):
+
+```bash
+podman run -d --name insumap-db -e POSTGRES_USER=insumap -e POSTGRES_PASSWORD=insumap \
+  -e POSTGRES_DB=insumap -p 5432:5432 docker.io/library/postgres:16-alpine
 ```
 
 **Probar con Swagger** (`http://localhost:8000/docs`):
