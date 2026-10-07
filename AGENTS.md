@@ -184,6 +184,9 @@ Están todas documentadas en [`.env.example`](.env.example). Las más importante
 - Crear o actualizar el esquema: `uv run alembic upgrade head`. Al arrancar, la app ejecuta la semilla idempotente.
 - Para probar cambios de esquema sin tocar producción, crea una rama de Neon (`neon checkout <nombre>`), corre las migraciones ahí y bórrala después.
 
+### URL de producción
+- API: https://insumap-backend.onrender.com · Swagger: https://insumap-backend.onrender.com/docs · Health: https://insumap-backend.onrender.com/health
+
 ### Backend: Render
 - `render.yaml` es un *Blueprint*: en Render elige **New → Blueprint** y selecciona este repo.
 - Completa las variables marcadas `sync: false`: `DATABASE_URL` y `DATABASE_URL_UNPOOLED` (de Neon), y `CORS_ORIGINS` y `FRONTEND_URL` (frontend). `JWT_SECRET` y `CRON_TOKEN` se generan solos.

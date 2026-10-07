@@ -7,6 +7,12 @@ Usa FastAPI, PostgreSQL y **estructuras de datos implementadas a mano** (matriz,
 -  Documentación del proyecto: [`docs/`](docs/README.md)
 -  Guía para colaboradores y agentes: [`AGENTS.md`](AGENTS.md)
 
+## Producción
+
+- API: https://insumap-backend.onrender.com
+- Swagger: https://insumap-backend.onrender.com/docs (usuarios demo abajo)
+- Base de datos: Neon, proyecto `raspy-sea-39960827`, rama `production`
+
 ## Inicio rápido
 
 Requisitos: [uv](https://docs.astral.sh/uv/) y Docker o Podman.

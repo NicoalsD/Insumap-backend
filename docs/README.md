@@ -8,6 +8,11 @@
 
 ![Arquitectura de contenedores](images/c4-contenedores.png)
 
+## Producción
+
+- API desplegada en Render: https://insumap-backend.onrender.com · Swagger: https://insumap-backend.onrender.com/docs
+- Base de datos: PostgreSQL en Neon (rama `production`)
+
 ## Repositorios
 
 | Repo | Lenguaje | Contenido |
