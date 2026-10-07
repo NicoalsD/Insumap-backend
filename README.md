@@ -4,8 +4,8 @@ API REST de **Insumap**, aplicación web *mobile first* para la rotación de zon
 
 Usa FastAPI, PostgreSQL y **estructuras de datos implementadas a mano** (matriz, tabla hash, pila, montículos, lista doble, grafo y caché LRU).
 
-- 📚 Documentación del proyecto: [`docs/`](docs/README.md)
-- 🤖 Guía para colaboradores y agentes: [`AGENTS.md`](AGENTS.md)
+-  Documentación del proyecto: [`docs/`](docs/README.md)
+-  Guía para colaboradores y agentes: [`AGENTS.md`](AGENTS.md)
 
 ## Inicio rápido
 
