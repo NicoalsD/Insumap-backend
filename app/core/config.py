@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,8 @@ class Settings(BaseSettings):
     app_name: str = "Insumap API"
     environment: str = "local"
     database_url: str = "postgresql+psycopg://insumap:insumap@localhost:5432/insumap"
+    # Direct (non-pooled) connection for migrations; Neon provides it as DATABASE_URL_UNPOOLED.
+    database_url_unpooled: str = ""
 
     jwt_secret: str = "change-me-in-production-please-32b"
     jwt_algorithm: str = "HS256"
@@ -50,6 +53,19 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = 20.0
 
     seed_demo_users: bool = True
+
+    @field_validator("database_url", "database_url_unpooled")
+    @classmethod
+    def _use_psycopg_driver(cls, v: str) -> str:
+        """Accept the plain ``postgres(ql)://`` URLs given by Neon/Render and use psycopg 3."""
+        for prefix in ("postgresql://", "postgres://"):
+            if v.startswith(prefix):
+                return "postgresql+psycopg://" + v[len(prefix) :]
+        return v
+
+    @property
+    def migration_url(self) -> str:
+        return self.database_url_unpooled or self.database_url
 
     @property
     def cors_origin_list(self) -> list[str]:
