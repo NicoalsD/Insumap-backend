@@ -176,10 +176,17 @@ Están todas documentadas en [`.env.example`](.env.example). Las más importante
 | `AI_SERVICE_URL`, `AI_SERVICE_TOKEN` | Servicio `Insumap-ai` |
 | `SEED_DEMO_USERS` | Usuarios demo; `false` en producción |
 
-## 8. Despliegue (Render + Neon)
+## 8. Despliegue
 
-- **Build:** `uv sync --frozen`
-- **Pre-deploy:** `uv run alembic upgrade head`
-- **Start:** `uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+### Base de datos: Neon
+- Proyecto `raspy-sea-39960827`, rama `production` (región AWS us-east-2), vinculado con `neon link` (archivo `.neon`, ignorado por git).
+- `neon deploy` aplica la política de `neon.ts` a la rama y escribe `DATABASE_URL` y `DATABASE_URL_UNPOOLED` en `.env`. El backend acepta las URLs `postgresql://` de Neon tal cual y Alembic usa la URL directa (sin pooler).
+- Crear o actualizar el esquema: `uv run alembic upgrade head`. Al arrancar, la app ejecuta la semilla idempotente.
+- Para probar cambios de esquema sin tocar producción, crea una rama de Neon (`neon checkout <nombre>`), corre las migraciones ahí y bórrala después.
+
+### Backend: Render
+- `render.yaml` es un *Blueprint*: en Render elige **New → Blueprint** y selecciona este repo.
+- Completa las variables marcadas `sync: false`: `DATABASE_URL` y `DATABASE_URL_UNPOOLED` (de Neon), y `CORS_ORIGINS` y `FRONTEND_URL` (frontend). `JWT_SECRET` y `CRON_TOKEN` se generan solos.
+- El *start command* ejecuta `alembic upgrade head` antes de `uvicorn`, porque el plan gratuito no tiene *pre-deploy command*.
 - Configura un cron externo (cron-job.org) que haga `POST /api/v1/internal/reminders/tick` cada minuto con el header `X-Cron-Token`. Así los recordatorios siguen funcionando aunque Render se duerma.
 - El min-heap de recordatorios vive en memoria. Se asume **una sola instancia**; si se escala, mover el planificador a un worker dedicado.
