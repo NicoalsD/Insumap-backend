@@ -82,6 +82,16 @@ class DoublyLinkedList(Generic[T]):
             yield node.data()
             node = node.prev
 
+    def iter_from(self, after: DNode[T] | None, forward: bool = True) -> Iterator[DNode[T]]:
+        """Nodes strictly after ``after`` (or from the edge when None). O(1) per step."""
+        if after is None:
+            node = self._head.next if forward else self._tail.prev
+        else:
+            node = after.next if forward else after.prev
+        while node is not None and node is not self._tail and node is not self._head:
+            yield node
+            node = node.next if forward else node.prev
+
     def page(self, after: DNode[T] | None, limit: int, forward: bool = True) -> list[T]:
         """Up to ``limit`` items **after** ``after`` (or from the edge when None). O(limit)."""
         if after is None:

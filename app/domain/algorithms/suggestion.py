@@ -84,9 +84,7 @@ def suggest(
         overuse_pen = p.overuse_gamma * overuse.get(z.macro)
         neighbor_pen = p.neighbor_delta if penalized.contains(z.id) else 0.0
         score = round(ev.ratio + bonus - overuse_pen - neighbor_pen, 9)
-        items.append(
-            Suggestion(z.id, score, ev.color, ev.ratio, ev.hours_since, bonus, overuse_pen, neighbor_pen)
-        )
+        items.append(Suggestion(z.id, score, ev.color, ev.ratio, ev.hours_since, bonus, overuse_pen, neighbor_pen))
     heap: Heap[Suggestion] = Heap(_before)
     heap.build(items)
     return heap.top_k(k)

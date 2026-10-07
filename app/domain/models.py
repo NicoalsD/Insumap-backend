@@ -52,9 +52,7 @@ def parse_id(microzone_id: str, grid_size: int) -> tuple[str, str, int, int]:
 class Params:
     """Algorithm parameters. **Example values, pending clinical validation.**"""
 
-    base_hours: dict[str, float] = field(
-        default_factory=lambda: {"ABD": 72.0, "MUS": 96.0, "BRA": 96.0, "GLU": 96.0}
-    )
+    base_hours: dict[str, float] = field(default_factory=lambda: {"ABD": 72.0, "MUS": 96.0, "BRA": 96.0, "GLU": 96.0})
     frequency_alpha: float = 0.10
     yellow_threshold: float = 0.50
     green_threshold: float = 1.00

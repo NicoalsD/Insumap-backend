@@ -194,9 +194,7 @@ class PatientState:
             sides = []
             for side in SIDES:
                 grid = self.grids.get((m, side))
-                sides.append(
-                    {"side": side, "cells": [self.evaluate_microzone(mz, now) for _, _, mz in grid.iterate()]}
-                )
+                sides.append({"side": side, "cells": [self.evaluate_microzone(mz, now) for _, _, mz in grid.iterate()]})
             zones.append({"macro": m, "label": MACRO_LABELS[m], "sides": sides})
         return zones
 
