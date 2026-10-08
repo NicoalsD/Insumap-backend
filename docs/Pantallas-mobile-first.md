@@ -1,6 +1,6 @@
 # Pantallas (mobile first)
 
-Insumap se diseña **primero para un celular de 360 × 800 px**, que es el contexto real de uso: el paciente tiene la pluma de insulina en una mano y el celular en la otra. Después se escala a tablet y escritorio, y la vista del médico aprovecha la pantalla ancha.
+Insumap se diseña **primero para un celular de 360 × 800 px**, que es el contexto real de uso: el paciente tiene la pluma de insulina en una mano y el celular en la otra. **Tablet y escritorio no son un estiramiento del móvil:** son layouts propios. El mismo flujo (mapa, registro, historial, médico) debe verse completo y usable en una pantalla de PC.
 
 ![Mapa de navegación](images/navegacion.png)
 
@@ -8,16 +8,26 @@ Insumap se diseña **primero para un celular de 360 × 800 px**, que es el conte
 
 | Principio | Aplicación |
 |---|---|
-| **Una mano** | La navegación inferior (*bottom nav*) y las acciones primarias quedan en el tercio inferior. Los objetivos táctiles miden al menos **44 × 44 px** (con cuadrícula 6×6 se activa el zoom de la zona) |
+| **Una mano en móvil** | En `< lg` la navegación es inferior (*bottom nav*) y las acciones primarias quedan en el tercio inferior. Los objetivos táctiles miden al menos **44 × 44 px** (con cuadrícula 6×6 se activa el zoom de la zona) |
+| **Escritorio de verdad** | Desde `lg` (≥ 1024 px) la navegación pasa a una **barra lateral** fija. El contenido usa hasta ~1152 px, el mapa crece y el médico ve mapa e historial **a la vez** (dos columnas). No se deja la columna de 512 px centrada en una pantalla ancha |
 | **Color + forma** | Rojo/amarillo/verde **siempre** acompañados de ícono y patrón (✕ rayado, ! punteado, ✓ sólido) para personas con daltonismo (RNF-05) |
 | **Una tarea por pantalla** | Registrar es tocar, confirmar y listo, con opción de deshacer en un *toast* de 10 s |
 | **Instalable** | Banner "Agregar a pantalla de inicio" (necesario para push en iOS) |
 | **Offline** | El último mapa queda cacheado por el service worker; un registro hecho sin conexión queda en cola y se reintenta |
 
-**Breakpoints (Tailwind):** base `< 640 px` (móvil) · `md ≥ 768 px` (tablet: mapa y panel lateral) · `lg ≥ 1024 px` (escritorio: vista del médico en dos columnas).
+**Breakpoints (Tailwind):** base `< 640 px` (móvil, una columna, bottom nav) · `md ≥ 768 px` (tablet: mapa y panel de sugerencia lado a lado, contenido hasta 768 px) · `lg ≥ 1024 px` (escritorio: sidebar + contenido hasta 1152 px; médico en dos columnas).
 
-**Navegación inferior del paciente:** `Mapa` · `Historial` · `Asistente` · `Recordatorios` · `Perfil`.
-**Navegación del médico:** `Pacientes` · `Perfil`.
+**Navegación del paciente:** en móvil, inferior: `Mapa` · `Historial` · `Asistente` · `Recordatorios` · `Perfil`. En escritorio, los mismos destinos en la barra lateral.
+**Navegación del médico:** `Pacientes` · `Perfil` (inferior en móvil, lateral en escritorio).
+
+### Layout de escritorio (regla)
+
+| Pantalla | `< lg` | `≥ lg` |
+|---|---|---|
+| P01–P03 Login / registro | Columna única | Panel de marca a la izquierda y formulario a la derecha |
+| P04 Mapa | Sugerencia arriba, cuerpo abajo | Cuerpo a la izquierda (más alto) y sugerencia fija a la derecha |
+| P06 Historial, P07, P08, P09 | Una columna | Misma columna, ancho máximo ~768 px para no estirar filas |
+| P11 Detalle del médico | Toggle Mapa / Historial | Mapa e historial visibles a la vez |
 
 ---
 
