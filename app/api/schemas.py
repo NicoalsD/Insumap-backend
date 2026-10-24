@@ -264,4 +264,7 @@ class AssistantMessageOut(ORMModel):
     id: uuid.UUID
     role: str
     content: str
+    provider: str | None = None
+    model: str | None = None
+    blocked_by_guardrail: bool = False
     created_at: datetime

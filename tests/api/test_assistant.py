@@ -9,7 +9,10 @@ def test_degraded_mode_without_ai_service(client, patient):
     data = r.json()
     assert data["degraded"] is True and data["source"] == "template"
     assert data["referenced_microzones"][0] in data["reply"]
-    assert [m["role"] for m in client.get(API, headers=patient).json()] == ["USER", "ASSISTANT"]
+    messages = client.get(API, headers=patient).json()
+    assert [m["role"] for m in messages] == ["USER", "ASSISTANT"]
+    assert messages[1]["provider"] is None and messages[1]["model"] is None
+    assert messages[1]["blocked_by_guardrail"] is False
 
 
 def test_dose_guardrail(client, patient):
