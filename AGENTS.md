@@ -17,7 +17,7 @@ Es un proyecto académico de la materia **Estructura de Datos**. Sus requisitos 
 | Repositorio | Lenguaje | Rol |
 |---|---|---|
 | `Insumap-backend` (este) | Python | API REST, dominio, **estructuras de datos propias**, PostgreSQL |
-| `Insumap-frontend` | TypeScript | PWA React + Vite, mapa corporal SVG |
+| `Insumap-frontend` | TypeScript | PWA React + Vite, mapa corporal SVG. Mobile first **y** layout de escritorio (`lg`: sidebar, mapa en dos columnas). Ver [Pantallas](docs/Pantallas-mobile-first.md) |
 | `Insumap-ai` (por crear) | Python | Asistente LLM (DeepSeek / Qwen) que llama a esta API con un token delegado |
 
 Equipo: Nicolas Diaz · Drako Salazar · Nicolas Mora.
