@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     cookie_samesite: str = "lax"
 
     cors_origins: str = "http://localhost:5173"
+    cors_origin_regex: str = r"https://insumap-frontend(?:-[a-z0-9]+)?(?:-nicolas-bd0c)?\.vercel\.app"
     frontend_url: str = "http://localhost:5173"
 
     login_max_attempts: int = 5
