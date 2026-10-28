@@ -47,6 +47,14 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleLoginRequest(BaseModel):
+    credential: str = Field(min_length=20, description="ID token de Google Identity Services")
+
+
+class GoogleConfigOut(BaseModel):
+    client_id: str = Field(description="Client ID público de OAuth 2.0; vacío si no está configurado")
+
+
 class UserOut(ORMModel):
     id: uuid.UUID
     name: str

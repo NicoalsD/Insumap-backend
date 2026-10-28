@@ -2,6 +2,8 @@
 
 from datetime import timedelta
 
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,7 @@ from app.services import email_service
 
 _settings = get_settings()
 login_attempts = SlidingWindowCounter(_settings.login_max_attempts, timedelta(minutes=_settings.login_window_minutes))
+google_attempts = SlidingWindowCounter(20, timedelta(minutes=_settings.login_window_minutes))
 
 
 def register(
@@ -53,6 +56,71 @@ def authenticate(db: Session, email: str, password: str, client_ip: str) -> User
         login_attempts.hit(key)
         raise unauthorized("INVALID_CREDENTIALS", "Email o contraseña incorrectos.")
     login_attempts.reset(key)
+    return user
+
+
+def _google_payload(credential: str) -> dict[str, object]:
+    """Verify a Google Identity Services ID token and return its claims."""
+    settings = get_settings()
+    if not settings.google_client_id:
+        raise AppError(503, "GOOGLE_NOT_CONFIGURED", "El inicio de sesión con Google no está configurado.")
+    try:
+        payload = google_id_token.verify_oauth2_token(
+            credential, google_requests.Request(), settings.google_client_id
+        )
+    except ValueError as exc:
+        raise unauthorized("INVALID_GOOGLE_TOKEN", "No pudimos validar tu cuenta de Google.") from exc
+    if payload.get("iss") not in {"accounts.google.com", "https://accounts.google.com"}:
+        raise unauthorized("INVALID_GOOGLE_TOKEN", "No pudimos validar tu cuenta de Google.")
+    if not payload.get("email_verified"):
+        raise unauthorized("GOOGLE_EMAIL_NOT_VERIFIED", "Tu correo de Google no está verificado.")
+    if not payload.get("sub") or not payload.get("email"):
+        raise unauthorized("INVALID_GOOGLE_TOKEN", "No pudimos validar tu cuenta de Google.")
+    return payload
+
+
+def login_with_google(db: Session, credential: str, client_ip: str) -> User:
+    """Sign in with Google. Links an existing email or creates a patient account."""
+    key = f"google|{client_ip}"
+    if google_attempts.is_blocked(key):
+        raise AppError(429, "RATE_LIMITED", "Demasiados intentos. Intenta de nuevo en 15 minutos.")
+
+    payload = _google_payload(credential)
+    sub = str(payload["sub"])
+    email = str(payload["email"]).lower()
+
+    user = db.scalar(select(User).where(User.google_sub == sub))
+    if user is None:
+        user = db.scalar(select(User).where(User.email == email))
+        if user is not None:
+            if user.google_sub is not None and user.google_sub != sub:
+                google_attempts.hit(key)
+                raise conflict("GOOGLE_ACCOUNT_CONFLICT", "Este correo ya está vinculado a otra cuenta de Google.")
+            if not user.is_active:
+                raise unauthorized("ACCOUNT_INACTIVE", "Tu cuenta está inactiva.")
+            user.google_sub = sub
+            db.commit()
+            db.refresh(user)
+            google_attempts.reset(key)
+            return user
+
+        name = str(payload.get("name") or email.split("@")[0])[:120]
+        user = User(
+            name=name,
+            email=email,
+            password_hash=hash_password(new_opaque_token()),
+            role=Role.PATIENT,
+            google_sub=sub,
+        )
+        db.add(user)
+        db.flush()
+        db.add(Patient(user_id=user.id))
+        db.commit()
+        db.refresh(user)
+
+    if not user.is_active:
+        raise unauthorized("ACCOUNT_INACTIVE", "Tu cuenta está inactiva.")
+    google_attempts.reset(key)
     return user
 
 
@@ -103,7 +171,7 @@ def request_password_reset(db: Session, email: str) -> None:
         PasswordResetToken(user_id=user.id, token_hash=sha256(token), expires_at=clock.now() + timedelta(minutes=30))
     )
     db.commit()
-    link = f"{_settings.frontend_url}/restablecer-contrasena?token={token}"
+    link = f"{_settings.frontend_url}/reset-password?token={token}"
     email_service.send(
         user.email,
         "Insumap - Restablecer contraseña",

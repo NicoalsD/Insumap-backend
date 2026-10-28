@@ -1,3 +1,5 @@
+from app.core.config import get_settings
+from app.services import auth_service
 from tests.conftest import login
 
 API = "/api/v1/auth"
@@ -68,6 +70,7 @@ def test_password_reset_flow(client):
     assert client.post(f"{API}/forgot-password", json={"email": "nadie@x.co"}).status_code == 202
     client.post(f"{API}/forgot-password", json={"email": "paciente@demo.insumap"})
     body = email_service.outbox[-1].get_content()
+    assert "/reset-password?token=" in body
     token = body.split("token=")[1].split()[0]
     r = client.post(f"{API}/reset-password", json={"token": token, "new_password": "nueva1234"})
     assert r.status_code == 200
@@ -78,3 +81,74 @@ def test_password_reset_flow(client):
 def test_protected_route_without_token(client):
     r = client.get("/api/v1/map")
     assert r.status_code == 401 and r.json()["error"]["code"] == "NOT_AUTHENTICATED"
+
+
+def _google_claims(**overrides):
+    claims = {
+        "iss": "https://accounts.google.com",
+        "sub": "google-123",
+        "email": "google@correo.com",
+        "email_verified": True,
+        "name": "Google User",
+    }
+    claims.update(overrides)
+    return claims
+
+
+def _configure_google(monkeypatch, claims):
+    monkeypatch.setattr(get_settings(), "google_client_id", "test-client-id")
+    monkeypatch.setattr(
+        auth_service.google_id_token,
+        "verify_oauth2_token",
+        lambda credential, request, audience: claims,
+    )
+
+
+def test_google_login_creates_and_reuses_account(client, monkeypatch):
+    _configure_google(monkeypatch, _google_claims())
+    credential = "x" * 30
+
+    first = client.post(f"{API}/google", json={"credential": credential})
+    assert first.status_code == 200
+    assert first.json()["user"]["email"] == "google@correo.com"
+    assert first.json()["user"]["role"] == "PATIENT"
+
+    second = client.post(f"{API}/google", json={"credential": credential})
+    assert second.status_code == 200
+    assert second.json()["user"]["id"] == first.json()["user"]["id"]
+
+
+def test_google_login_links_existing_email(client, monkeypatch):
+    headers = login(client, "paciente@demo.insumap")
+    existing_id = client.get(f"{API}/me", headers=headers).json()["id"]
+    _configure_google(monkeypatch, _google_claims(email="paciente@demo.insumap", sub="google-demo"))
+
+    r = client.post(f"{API}/google", json={"credential": "y" * 30})
+    assert r.status_code == 200
+    assert r.json()["user"]["id"] == existing_id
+
+
+def test_google_login_rejects_invalid_token(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "google_client_id", "test-client-id")
+
+    def invalid(credential, request, audience):
+        raise ValueError("invalid token")
+
+    monkeypatch.setattr(auth_service.google_id_token, "verify_oauth2_token", invalid)
+    r = client.post(f"{API}/google", json={"credential": "z" * 30})
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "INVALID_GOOGLE_TOKEN"
+
+
+def test_google_login_requires_configuration(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "google_client_id", "")
+    r = client.post(f"{API}/google", json={"credential": "w" * 30})
+    assert r.status_code == 503
+    assert r.json()["error"]["code"] == "GOOGLE_NOT_CONFIGURED"
+
+
+def test_google_login_requires_verified_email(client, monkeypatch):
+    _configure_google(monkeypatch, _google_claims(email_verified=False))
+    r = client.post(f"{API}/google", json={"credential": "v" * 30})
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "GOOGLE_EMAIL_NOT_VERIFIED"

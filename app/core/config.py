@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "Insumap <no-reply@insumap.local>"
 
+    google_client_id: str = ""
+
     ai_service_url: str = ""
     ai_service_token: str = ""
     ai_timeout_seconds: float = 20.0

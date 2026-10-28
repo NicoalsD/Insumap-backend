@@ -7,6 +7,8 @@ from app.api.deps import CurrentUser, DbSession
 from app.api.schemas import (
     ErrorResponse,
     ForgotPasswordRequest,
+    GoogleConfigOut,
+    GoogleLoginRequest,
     LoginRequest,
     MessageResponse,
     RegisterRequest,
@@ -68,6 +70,26 @@ def register(body: RegisterRequest, response: Response, db: DbSession) -> TokenR
 def login(body: LoginRequest, request: Request, response: Response, db: DbSession) -> TokenResponse:
     """HU-21 / R21. Devuelve el access token y fija la cookie httpOnly de refresh."""
     user = auth_service.authenticate(db, body.email, body.password, request.client.host if request.client else "")
+    access, refresh = auth_service.issue_tokens(db, user)
+    _set_refresh_cookie(response, refresh)
+    return _token_response(user, access)
+
+
+@router.get("/google/config", response_model=GoogleConfigOut, summary="Configuración pública de Google")
+def google_config() -> GoogleConfigOut:
+    """Expone el Client ID público que necesita Google Identity Services."""
+    return GoogleConfigOut(client_id=get_settings().google_client_id)
+
+
+@router.post(
+    "/google",
+    response_model=TokenResponse,
+    responses={503: {"model": ErrorResponse}, **ERRORS},
+    summary="Iniciar sesión con Google",
+)
+def google_login(body: GoogleLoginRequest, request: Request, response: Response, db: DbSession) -> TokenResponse:
+    """HU-21 / R21. Valida el ID token de Google, vincula la cuenta y emite la sesión."""
+    user = auth_service.login_with_google(db, body.credential, request.client.host if request.client else "")
     access, refresh = auth_service.issue_tokens(db, user)
     _set_refresh_cookie(response, refresh)
     return _token_response(user, access)
